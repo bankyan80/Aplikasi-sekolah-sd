@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// Sekolah
+model Sekolah {
+  id        String   @id @default(cuid())
+  nama      String
+  npsn      String   @unique
+  alamat    String?
+  jenjang   String   // SD, SMP, SMA, SMK
+  tahunAjaran String @default("2025/2026")
+  logo      String?  // Logo sekolah (URL atau base64)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  guru      Guru[]
+  kelas     Kelas[]
+  users     User[]
+  siswa     Siswa[]
+}
+
+// User untuk autentikasi - All roles
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String   // kepala_sekolah, guru_kelas, guru_mapel, siswa, wali
+  nama      String
+  foto      String?
+  isActive  Boolean  @default(true)
+  sekolahId String?  // Multi-school support
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sekolah   Sekolah?  @relation(fields: [sekolahId], references: [id])
+  guru      Guru?
+  siswa     Siswa?
+  wali      WaliSiswa?
+  kehadiran KehadiranGuru[]
+}
+
+// Guru
+model Guru {
+  id        String   @id @default(cuid())
+  nip       String   @unique
+  nama      String
+  email     String
+  telepon   String?
+  alamat    String?
+  status    String   @default("aktif") // aktif, tidak_aktif
+  jenisGuru String   // guru_kelas, guru_mapel
+  sekolahId String
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sekolah   Sekolah  @relation(fields: [sekolahId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  kelasDiampu Kelas[] @relation("GuruKelas")
+  mataPelajaran MataPelajaran[]
+  materi    Materi[]
+  quiz      Quiz[]
+  kehadiran KehadiranGuru[]
+}
+
+// Siswa
+model Siswa {
+  id        String   @id @default(cuid())
+  nisn      String   @unique
+  nama      String
+  jenkel    String?  // L, P
+  tempatLahir String?
+  tanggalLahir DateTime?
+  alamat    String?
+  telepon   String?
+  kelasId   String
+  sekolahId String
+  userId    String   @unique
+  waliId    String?  // Wali siswa
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sekolah   Sekolah  @relation(fields: [sekolahId], references: [id])
+  kelas     Kelas    @relation(fields: [kelasId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  wali      WaliSiswa? @relation(fields: [waliId], references: [id])
+  kehadiran KehadiranSiswa[]
+  nilaiQuiz NilaiQuiz[]
+}
+
+// Wali Siswa (Orang Tua)
+model WaliSiswa {
+  id        String   @id @default(cuid())
+  nama      String
+  email     String
+  telepon   String?
+  alamat    String?
+  hubungan  String   // ayah, ibu, wali
+  pekerjaan String?
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation(fields: [userId], references: [id])
+  anak      Siswa[]
+}
+
+// Kelas
+model Kelas {
+  id          String   @id @default(cuid())
+  nama        String   // Contoh: 1A, 1B, 7A, 10 IPA 1
+  tingkat     String   // 1, 2, 3, 4, 5, 6 untuk SD; 7,8,9 untuk SMP; 10,11,12 untuk SMA/SMK
+  rombel      String   // A, B, C atau IPA 1, IPA 2, IPS 1, dll
+  sekolahId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  sekolah     Sekolah     @relation(fields: [sekolahId], references: [id])
+  guruKelas   Guru[]      @relation("GuruKelas")
+  mataPelajaran MataPelajaran[]
+  siswa       Siswa[]
+}
+
+// Mata Pelajaran
+model MataPelajaran {
+  id        String   @id @default(cuid())
+  nama      String
+  kode      String?
+  deskripsi String?
+  kelasId   String
+  guruId    String
+  sekolahId String  // For multi-school filtering
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  kelas     Kelas    @relation(fields: [kelasId], references: [id])
+  guru      Guru     @relation(fields: [guruId], references: [id])
+  materi    Materi[]
+  quiz      Quiz[]
+}
+
+// Materi Ajar
+model Materi {
+  id          String   @id @default(cuid())
+  judul       String
+  deskripsi   String
+  konten      String   // Konten HTML atau text
+  gambar      String?  // URL atau base64 gambar
+  fileUrl     String?  // URL file upload
+  kategori    String   // umum, template
+  mapelId     String
+  guruId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  mapel       MataPelajaran @relation(fields: [mapelId], references: [id])
+  guru        Guru     @relation(fields: [guruId], references: [id])
+}
+
+// Quiz
+model Quiz {
+  id          String   @id @default(cuid())
+  judul       String
+  deskripsi   String?
+  jenis       String   // harian, uts, uas
+  durasi      Int      @default(60) // dalam menit
+  mapelId     String
+  guruId      String
+  aktif       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  mapel       MataPelajaran @relation(fields: [mapelId], references: [id])
+  guru        Guru     @relation(fields: [guruId], references: [id])
+  soal        SoalQuiz[]
+  nilai       NilaiQuiz[]
+}
+
+// Soal Quiz
+model SoalQuiz {
+  id        String   @id @default(cuid())
+  pertanyaan String
+  opsiA     String
+  opsiB     String
+  opsiC     String?
+  opsiD     String?
+  jawaban   String   // A, B, C, D
+  gambar    String?
+  quizId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  quiz      Quiz     @relation(fields: [quizId], references: [id])
+}
+
+// Nilai Quiz - Hasil pengerjaan quiz siswa
+model NilaiQuiz {
+  id        String   @id @default(cuid())
+  siswaId   String
+  quizId    String
+  jawaban   String   // JSON jawaban siswa
+  nilai     Float    // Nilai 0-100
+  selesai   Boolean  @default(false)
+  waktuMulai DateTime?
+  waktuSelesai DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  siswa     Siswa    @relation(fields: [siswaId], references: [id])
+  quiz      Quiz     @relation(fields: [quizId], references: [id])
+}
+
+// Kehadiran Guru
+model KehadiranGuru {
+  id        String   @id @default(cuid())
+  guruId    String
+  userId    String
+  tanggal   DateTime
+  status    String   // hadir, izin, sakit, alpha
+  keterangan String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  guru      Guru     @relation(fields: [guruId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+// Kehadiran Siswa
+model KehadiranSiswa {
+  id        String   @id @default(cuid())
+  siswaId   String
+  tanggal   DateTime
+  status    String   // hadir, izin, sakit, alpha
+  keterangan String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  siswa     Siswa    @relation(fields: [siswaId], references: [id])
+}
