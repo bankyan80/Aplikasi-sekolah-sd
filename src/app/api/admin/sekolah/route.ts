@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // GET all schools
 export async function GET(request: NextRequest) {
   try {
-    const { db } = await import('@/lib/db');
-    
-    const schools = await db.sekolah.findMany({
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    const schools = await prisma.sekolah.findMany({
       include: {
         _count: {
           select: { guru: true, kelas: true, users: true },
@@ -14,14 +15,18 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
+    await prisma.$disconnect();
+
     return NextResponse.json({ success: true, data: schools });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get schools error:', error);
-    // Return empty array instead of error for graceful degradation
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: [],
-      message: 'Database belum siap. Silakan jalankan migrasi terlebih dahulu.'
+      debug: {
+        errorMessage: error.message,
+        errorCode: error.code,
+      }
     });
   }
 }
@@ -29,24 +34,26 @@ export async function GET(request: NextRequest) {
 // POST create new school
 export async function POST(request: NextRequest) {
   try {
-    const { db } = await import('@/lib/db');
-    
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
     const body = await request.json();
     const { nama, npsn, alamat, jenjang, tahunAjaran, logo } = body;
 
     // Check if NPSN already exists
-    const existingSchool = await db.sekolah.findUnique({
+    const existingSchool = await prisma.sekolah.findUnique({
       where: { npsn },
     });
 
     if (existingSchool) {
+      await prisma.$disconnect();
       return NextResponse.json(
         { success: false, message: 'NPSN sudah terdaftar' },
         { status: 400 }
       );
     }
 
-    const school = await db.sekolah.create({
+    const school = await prisma.sekolah.create({
       data: {
         nama,
         npsn,
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     for (const tingkat of tingkatList) {
       for (const rombel of rombelList) {
-        await db.kelas.create({
+        await prisma.kelas.create({
           data: {
             nama: `Kelas ${tingkat}${rombel}`,
             tingkat,
@@ -74,25 +81,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await prisma.$disconnect();
+
     return NextResponse.json({ success: true, data: school });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create school error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Gagal membuat sekolah baru. Pastikan database sudah dikonfigurasi dengan benar.' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: false,
+      message: 'Gagal membuat sekolah baru',
+      debug: {
+        errorMessage: error.message,
+        errorCode: error.code,
+      }
+    }, { status: 500 });
   }
 }
 
 // PUT update school
 export async function PUT(request: NextRequest) {
   try {
-    const { db } = await import('@/lib/db');
-    
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
     const body = await request.json();
     const { id, nama, npsn, alamat, tahunAjaran, logo } = body;
 
-    const school = await db.sekolah.update({
+    const school = await prisma.sekolah.update({
       where: { id },
       data: {
         nama,
@@ -103,21 +117,25 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    await prisma.$disconnect();
+
     return NextResponse.json({ success: true, data: school });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update school error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Gagal memperbarui data sekolah' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: false,
+      message: 'Gagal memperbarui data sekolah',
+      debug: { errorMessage: error.message }
+    }, { status: 500 });
   }
 }
 
 // DELETE school
 export async function DELETE(request: NextRequest) {
   try {
-    const { db } = await import('@/lib/db');
-    
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -129,48 +147,51 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all related data
-    await db.kehadiranGuru.deleteMany({
+    await prisma.kehadiranGuru.deleteMany({
       where: { guru: { sekolahId: id } },
     });
 
-    await db.soalQuiz.deleteMany({
+    await prisma.soalQuiz.deleteMany({
       where: { quiz: { guru: { sekolahId: id } } },
     });
 
-    await db.quiz.deleteMany({
+    await prisma.quiz.deleteMany({
       where: { guru: { sekolahId: id } },
     });
 
-    await db.materi.deleteMany({
+    await prisma.materi.deleteMany({
       where: { guru: { sekolahId: id } },
     });
 
-    await db.mataPelajaran.deleteMany({
+    await prisma.mataPelajaran.deleteMany({
       where: { sekolahId: id },
     });
 
-    await db.guru.deleteMany({
+    await prisma.guru.deleteMany({
       where: { sekolahId: id },
     });
 
-    await db.user.deleteMany({
+    await prisma.user.deleteMany({
       where: { sekolahId: id },
     });
 
-    await db.kelas.deleteMany({
+    await prisma.kelas.deleteMany({
       where: { sekolahId: id },
     });
 
-    await db.sekolah.delete({
+    await prisma.sekolah.delete({
       where: { id },
     });
 
+    await prisma.$disconnect();
+
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete school error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Gagal menghapus sekolah' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: false,
+      message: 'Gagal menghapus sekolah',
+      debug: { errorMessage: error.message }
+    }, { status: 500 });
   }
 }
